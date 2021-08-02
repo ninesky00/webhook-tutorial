@@ -26,10 +26,20 @@ class WebhookWorker
                      }.to_json
                    )
 
+    # Store the webhook response.
+  webhook_event.update(response: {
+    headers: response.headers.to_h,
+    code: response.code.to_i,
+    body: response.body.to_s,
+  })
     # Raise a failed request error and let Sidekiq handle retrying.
     raise FailedRequestError unless
       response.status.success?
-                  rescue HTTP::TimeoutError
+    rescue HTTP::TimeoutError
+      # This error means the webhook endpoint timed out. We can either
+      # raise a failed request error to trigger a retry, or leave it
+      # as-is and consider timeouts terminal. We'll do the latter.
+      webhook_event.update(response: { error: 'TIMEOUT_ERROR' })
   end
 
   private
